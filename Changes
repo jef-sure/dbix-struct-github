@@ -1,0 +1,16 @@
+0.07 Tue Feb 16 15:00:49 CEST 2016
+         - added JSON support
+         - fixed group by with column names
+
+0.06 Thu Oct  1 20:25:49 CEST 2015
+         - fixed distribution content
+
+0.05 Thu Oct  1 14:48:49 CEST 2015
+         - fixed distribution content
+
+0.04 Wed Sep 30 15:29:11 CEST 2015
+         - fixed distribution content
+
+0.03 Tue Sep 29 17:55:09 CEST 2015
+         - first CPAN distribution
+
