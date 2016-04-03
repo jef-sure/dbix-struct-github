@@ -942,7 +942,8 @@ sub setup_row {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
 					push @timestamp_fields, $table->{NAME}->[$cn]
 						if $ti && $ti->{TYPE_NAME} =~ /^time/;
-					$json_fields{$table->{NAME}->[$cn]} = undef if $ti->{TYPE_NAME} =~ /^json/;
+					$json_fields{$table->{NAME}->[$cn]} = undef 
+						if $ti && $ti->{TYPE_NAME} =~ /^json/;
 				}
 			}
 		);
