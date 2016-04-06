@@ -647,7 +647,7 @@ sub make_object_update {
 					}
 					(\$where, \@bind_where) = SQL::Abstract->new->where(\$cond);
 				}
-				DBIx::Struct::connect->run(sub {
+				return DBIx::Struct::connect->run(sub {
 					\$_->do(qq{update $table set \$set \$where}, undef, \@bind, \@bind_where)
 					or DBIx::Struct::error_message {
 						result  => 'SQLERR',
@@ -723,7 +723,7 @@ sub make_object_delete {
 					\$cond = {(selectKeys)[0] => \$_[1]};
 				}
 				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				DBIx::Struct::connect->run(sub {
+				return DBIx::Struct::connect->run(sub {
 					\$_->do(qq{delete from $table \$where}, undef, \@bind)
 					or DBIx::Struct::error_message {
 						result  => 'SQLERR',
