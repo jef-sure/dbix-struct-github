@@ -475,8 +475,13 @@ NEW
 							"\$_" 
 						}						
 					} CORE::keys \%insert;
-				my \$insert = "insert into $table (" . CORE::join( ", ", \@insert) . ") values ("
+				my \$insert;
+				if(\%insert){
+					\$insert = "insert into $table (" . CORE::join( ", ", \@insert) . ") values ("
 					.  CORE::join( ", ", \@values) . ")";
+				} else {
+					\$insert = "insert into $table values (default)";
+				}
 NEW
 		if ($required) {
 			$new .= <<NEW;
