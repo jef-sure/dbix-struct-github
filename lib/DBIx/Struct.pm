@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 our @EXPORT = qw{
 	one_row
@@ -431,7 +431,7 @@ sub make_object_new {
 NEW
 	if (not ref $table) {
 		$new .= <<NEW;
-			 elsif(CORE::defined \$_[1]) {
+			 else {
 				my \%insert;
 				for(my \$i = 1; \$i < \@_; \$i += 2) {
 					if (CORE::exists \$fields{\$_[\$i]}) {
@@ -1187,7 +1187,7 @@ DESTROY
 		$update, $delete, $destroy, $accessors, $foreign_tables,
 		$references_tables;
 
-#	print $eval_code;
+	# print $eval_code;
 	eval $eval_code;
 	error_message {
 		result  => 'SQLERR',
