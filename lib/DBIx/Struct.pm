@@ -282,11 +282,11 @@ sub hash_ref_slice($@) {
 	map {$_ => $hashref->{$_}} @slice;
 }
 
-sub connector () {
+sub connector {
 	$conn;
 }
 
-sub connector_from_pool () {
+sub connector_from_pool {
 	$connector_pool->$connector_pool_method();
 }
 
