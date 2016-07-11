@@ -290,6 +290,18 @@ sub connector_from_pool {
 	$connector_pool->$connector_pool_method();
 }
 
+sub set_connector_pool {
+	$connector_pool = $_[0];
+}
+
+sub set_connector_pool_method {
+	$connector_pool_method = $_[0];
+}
+
+sub set_connector_object {
+	*conn = \$_[0];
+}
+
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
 	no strict 'refs';
@@ -348,7 +360,7 @@ sub import {
 			$defconn = 1;
 			my (undef, $connector_object) = splice @args, $i, 2;
 			--$i;
-			*conn = \${$connector_object};
+			*conn = \$connector_object;
 		}
 	}
 	if ($_emc) {
