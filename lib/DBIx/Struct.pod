@@ -52,7 +52,15 @@ These parameters are used for integration:
 
 =item connector_object
 
- Connector's singleton object. By defaut used its own object.
+ Connector's singleton object. By defaut its own object is used.
+
+=item connector_pool
+
+ Connector's pool object.
+
+=item connector_pool_method
+
+ Connector's pool object's method to retrieve a connector.
 
 =item table_classes_namespace
 
@@ -202,7 +210,10 @@ Returns one row object.
 
 Adds "HAVING" conditions to "GROUP BY"
  
- my $row1 = one_row("table", -group_by => "field", -having => {"length(field)" => {">", 5} });
+ my $row1 = one_row("table", 
+                    -group_by => "field", 
+                    -having => {"length(field)" => {">", 5} }
+            );
 
 =item -order_by
 
@@ -218,6 +229,17 @@ then it is supposed to be a primary key value.
 =item -offset
 
 Generates "LIMIT $X OFFSET $Y" SQL-clause.
+
+=item -sql
+
+Returns generated SQL statement. If value is code reference then it is called
+with two arguments: $sub->($statement, \@bind_variables); if value is scalar
+reference then $statement is assigned to referenced value.
+
+=item -dry_run
+
+Means don't fetch actual data. Useful with -sql when you only need to get 
+generated statement.  
 
 =back
 
@@ -300,6 +322,8 @@ have column name 'new' in your table. Full list of reserved keywords:
 
 =item update
 
+=item markUpdated
+
 =item filter_timestamp
 
 =back
@@ -351,6 +375,12 @@ Means
 with bind values 33, 1
 
 =back
+
+=head3 markUpdated($column)
+
+Sets "updated" attribute for column. You don't need to use it usually.
+But sometimes you have to help Perl to understand that deeply located
+element of JSON hash or array was actually updated.
 
 =head3 C<delete>
 
@@ -568,7 +598,7 @@ This module was written and is maintained by:
 
 =over
 
-=item * PEF Developer <pef-secure@yandex.ru>
+=item * Anton Petrusevich
 
 =back
 

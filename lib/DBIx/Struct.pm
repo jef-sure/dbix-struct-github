@@ -19,7 +19,7 @@ sub STORE {
 	$_[0][1]{$_[0][2]} = undef;
 	$_[0][0][$_[1]] = $_[2];
 }
-sub FETCH { $_[0][0][$_[1]] }
+sub FETCH {$_[0][0][$_[1]]}
 
 sub CLEAR {
 	$_[0][1]{$_[0][2]} = undef;
@@ -47,8 +47,8 @@ sub UNSHIFT {
 	$o->[1]{$o->[2]} = undef;
 	unshift(@$o, @_);
 }
-sub EXISTS { exists $_[0][0]->[$_[1]] }
-sub DELETE { delete $_[0][0]->[$_[1]] }
+sub EXISTS {exists $_[0][0]->[$_[1]]}
+sub DELETE {delete $_[0][0]->[$_[1]]}
 
 sub SPLICE {
 	my $ob  = shift;
@@ -148,7 +148,7 @@ our $db_reconnect_timeout = 30;
 sub _connect {
 	my ($self, @args) = @_;
 	for my $try (1 .. $db_reconnect_timeout) {
-		my $dbh = eval { $self->SUPER::_connect(@args) };
+		my $dbh = eval {$self->SUPER::_connect(@args)};
 		return $dbh if $dbh;
 		sleep 1 if $try != $db_reconnect_timeout;
 	}
@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 our @EXPORT = qw{
 	one_row
@@ -202,6 +202,8 @@ our $conn;
 our $update_on_destroy     = 1;
 our $connector_module      = 'DBIx::Struct::Connector';
 our $connector_constructor = 'new';
+our $connector_pool;
+our $connector_pool_method = 'get_connector';
 our $connector_args        = [];
 our $connector_driver;
 our $table_classes_namespace = 'DBC';
@@ -277,7 +279,15 @@ sub hash_ref_slice($@) {
 		result  => 'INTERR',
 		}
 		if 'HASH' ne ref $hashref;
-	map { $_ => $hashref->{$_} } @slice;
+	map {$_ => $hashref->{$_}} @slice;
+}
+
+sub connector () {
+	$conn;
+}
+
+sub connector_from_pool () {
+	$connector_pool->$connector_pool_method();
 }
 
 sub check_package_scalar {
@@ -289,10 +299,14 @@ sub check_package_scalar {
 	defined *{$er}{'SCALAR'};
 }
 
+my @already_exported_to;
+
 sub import {
 	my ($class, @args) = @_;
-	state $init_import = 0;
 	my $defconn = 0;
+	my $_emc    = 0;
+	my $_cp     = 0;
+	my $_c      = 0;
 	for (my $i = 0; $i < @args; ++$i) {
 		if ($args[$i] eq 'connector_module') {
 			(undef, $connector_module) = splice @args, $i, 2;
@@ -315,11 +329,21 @@ sub import {
 			--$i;
 		} elsif ($args[$i] eq 'error_class') {
 			my (undef, $emc) = splice @args, $i, 2;
-			$error_message_class = $emc if !$init_import;
+			$error_message_class = $emc;
+			$_emc                = 1;
+			--$i;
+		} elsif ($args[$i] eq 'connector_pool') {
+			(undef, $connector_pool) = splice @args, $i, 2;
+			$_cp = 1;
+			--$i;
+		} elsif ($args[$i] eq 'connector_pool_method') {
+			(undef, $connector_pool_method) = splice @args, $i, 2;
 			--$i;
 		} elsif ($args[$i] eq 'connector_args') {
 			(undef, $connector_args) = splice @args, $i, 2;
 			--$i;
+		} elsif ($args[$i] eq 'connector') {
+			$_c = 1;
 		} elsif ($args[$i] eq 'connector_object') {
 			$defconn = 1;
 			my (undef, $connector_object) = splice @args, $i, 2;
@@ -327,21 +351,25 @@ sub import {
 			*conn = \${$connector_object};
 		}
 	}
-	if (!$init_import) {
+	if ($_emc) {
 		my $eval = "*error_message = \\&$error_message_class" . "::error_message";
 		eval $eval;
 	}
-	my %imps = map { $_ => undef } @args, @EXPORT;
+	if ($_cp) {
+		no warnings 'redefine';
+		*connector = \&connector_from_pool;
+		for my $aep (@already_exported_to) {
+			*{"$aep\::connector"} = \&connector;
+		}
+	}
+	my $callpkg = caller;
+	push @already_exported_to, $callpkg if $_c;
+	my %imps = map {$_ => undef} @args, @EXPORT;
 	$class->export_to_level(1, $class, keys %imps);
-	$init_import = 1;
-}
-
-sub connector {
-	$conn;
 }
 
 sub _not_yet_connected {
-	if (not $conn) {
+	if (!$connector_pool && !$conn) {
 		my ($dsn, $user, $password) = @_;
 		if ($dsn && $dsn !~ /^dbi:/i) {
 			$dsn = "dbi:Pg:dbname=$dsn";
@@ -373,7 +401,7 @@ sub _not_yet_connected {
 		$conn->mode('fixup');
 	}
 	'' =~ /()/;
-	$connector_driver = $conn->driver->{driver};
+	$connector_driver = connector->driver->{driver};
 	no warnings 'redefine';
 	*connect = \&connector;
 	populate();
@@ -392,7 +420,7 @@ sub connect {
 		my $simple_table = (index($table, " ") == -1);
 		my $ncn;
 		if ($simple_table) {
-			$ncn = $table_classes_namespace . "::" . join('', map { ucfirst($_) } split(/[^a-zA-Z0-9]/, $table));
+			$ncn = $table_classes_namespace . "::" . join('', map {ucfirst($_)} split(/[^a-zA-Z0-9]/, $table));
 		} else {
 			$md5->add($table);
 			$ncn = $query_classes_namespace . "::" . "G" . $md5->hexdigest;
@@ -409,7 +437,7 @@ sub populate {
 			my $sth = $_->table_info('', '', '%', "TABLE");
 			return if not $sth;
 			my $tables = $sth->fetchall_arrayref;
-			@tables = map { $_->[2] } grep { $_->[3] eq 'TABLE' and $_->[2] !~ /^sql_/ } @$tables;
+			@tables = map {$_->[2]} grep {$_->[3] eq 'TABLE' and $_->[2] !~ /^sql_/} @$tables;
 		}
 	);
 	setup_row($_) for @tables;
@@ -803,7 +831,7 @@ FETCH
 sub _exists_row ($) {
 	my $ncn = $_[0];
 	no strict "refs";
-	if (grep { !/::$/ } keys %{"${ncn}::"}) {
+	if (grep {!/::$/} keys %{"${ncn}::"}) {
 		return 1;
 	}
 	return;
@@ -864,7 +892,6 @@ sub _parse_interface ($) {
 
 sub setup_row {
 	my ($table, $ncn, $interface) = @_;
-	my $conn = DBIx::Struct::connect;
 	error_message {
 		result  => 'SQLERR',
 		message => "Unsupported driver $connector_driver",
@@ -880,11 +907,11 @@ sub setup_row {
 	my @fkeys;
 	my @refkeys;
 	my %json_fields;
+	my $connector = DBIx::Struct::connect;
 
 	if (not ref $table) {
-
 		# means this is just one simple table
-		$conn->run(
+		$connector->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
 				error_message {
@@ -910,7 +937,7 @@ sub setup_row {
 				@pkeys = $_->primary_key(undef, undef, $table);
 				if (!@pkeys && @required) {
 					my $ukh = $_->statistics_info(undef, undef, $table, 1, 1);
-					my %req = map { $_ => undef } @required;
+					my %req = map {$_ => undef} @required;
 					my %pkeys;
 					while (my $ukr = $ukh->fetchrow_hashref) {
 						if (not exists $req{$ukr->{COLUMN_NAME}} or defined $ukr->{FILTER_CONDITION}) {
@@ -919,21 +946,21 @@ sub setup_row {
 							$pkeys{$ukr->{INDEX_NAME}}{fields}{$ukr->{COLUMN_NAME}} = undef;
 						}
 					}
-					my @d = grep { exists $pkeys{$_}{drop} } keys %pkeys;
+					my @d = grep {exists $pkeys{$_}{drop}} keys %pkeys;
 					delete $pkeys{$_} for @d;
 					if (%pkeys) {
-						my @spk = sort { scalar(keys %{$pkeys{$a}{fields}}) <=> scalar(keys %{$pkeys{$b}{fields}}) }
+						my @spk = sort {scalar(keys %{$pkeys{$a}{fields}}) <=> scalar(keys %{$pkeys{$b}{fields}})}
 							keys %pkeys;
 						@pkeys = keys %{$pkeys{$spk[0]}{fields}};
 					}
 				}
 				my $sth = $_->foreign_key_info(undef, undef, undef, undef, undef, $table);
 				if ($sth) {
-					@fkeys = grep { $_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/ } @{$sth->fetchall_arrayref({})};
+					@fkeys = grep {$_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/} @{$sth->fetchall_arrayref({})};
 				}
 				$sth = $_->foreign_key_info(undef, undef, $table, undef, undef, undef);
 				if ($sth) {
-					@refkeys = grep { $_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/ } @{$sth->fetchall_arrayref({})};
+					@refkeys = grep {$_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/} @{$sth->fetchall_arrayref({})};
 				}
 			}
 		);
@@ -941,13 +968,13 @@ sub setup_row {
 
 		# means this is a query
 		%fields = %{$table->{NAME_hash}};
-		$conn->run(
+		$connector->run(
 			sub {
 				for (my $cn = 0; $cn < @{$table->{NAME}}; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
 					push @timestamp_fields, $table->{NAME}->[$cn]
 						if $ti && $ti->{TYPE_NAME} =~ /^time/;
-					$json_fields{$table->{NAME}->[$cn]} = undef 
+					$json_fields{$table->{NAME}->[$cn]} = undef
 						if $ti && $ti->{TYPE_NAME} =~ /^json/;
 				}
 			}
@@ -1083,7 +1110,12 @@ FKT
 		}
 RT
 	}
-	my $accessors = '';
+	my $accessors = <<ACC;
+		sub markUpdated {
+			\$_[0]->[@{[_row_updates]}]{\$_[1]} = undef if CORE::exists \$fields{\$_[1]};
+			\$_[0];
+		}
+ACC
 	for my $k (keys %fields) {
 		next if exists $keywords{$k};
 		next if $k =~ /^\d/;
@@ -1369,7 +1401,7 @@ sub _parse_groupby {
 	my $sql_grp;
 	if (defined $groupby) {
 		$sql_grp = "GROUP BY ";
-		my @groupby = map { /^\d+$/ ? $_ : "$_" } (ref($groupby) ? @$groupby : ($groupby));
+		my @groupby = map {/^\d+$/ ? $_ : "$_"} (ref($groupby) ? @$groupby : ($groupby));
 		$sql_grp .= join(", ", @groupby);
 	}
 	$sql_grp;
@@ -1387,7 +1419,7 @@ sub _parse_having {
 }
 
 sub execute {
-	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset, $up_interface);
+	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset, $up_interface, $sql, $dry_run);
 	for (my $i = 2; $i < @_; ++$i) {
 		next unless defined $_[$i] and not ref $_[$i];
 		if ($_[$i] eq '-group_by') {
@@ -1410,6 +1442,12 @@ sub execute {
 			--$i;
 		} elsif ($_[$i] eq '-offset') {
 			(undef, $up_offset) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-sql') {
+			(undef, $sql) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-dry_run') {
+			(undef, $dry_run) = splice @_, $i, 2;
 			--$i;
 		}
 	}
@@ -1483,6 +1521,14 @@ sub execute {
 		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind, $where);
 		$ncn = make_name($query);
 	}
+	if ($sql) {
+		if ('CODE' eq ref $sql) {
+			$sql->($query, \@where_bind);
+		} elsif ('SCALAR' eq ref $sql) {
+			$$sql = $query;
+		}
+	}
+	return if $dry_run;
 	'' =~ /()/;
 	my $sth;
 	return DBIx::Struct::connect->run(
@@ -1503,15 +1549,6 @@ sub execute {
 				conditions => Dumper($conditions),
 				};
 			setup_row($sth, $ncn, $up_interface);
-			no strict 'refs';
-			if (!"$ncn"->can("dumpSQL")) {
-				*{$ncn . "::dumpSQL"} = sub {$query};
-				if (@query_bind) {
-					*{$ncn . "::needQueryBind"} = sub {1};
-				} else {
-					*{$ncn . "::needQueryBind"} = sub {0};
-				}
-			}
 			return $code->($sth, $ncn);
 		}
 	);

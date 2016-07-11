@@ -1,19 +1,19 @@
 use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME             => "DBIx::Struct",
-	AUTHOR           => "Pef Secure",
-	VERSION          => "0.08",
+	AUTHOR           => "Anton Petrusevich",
+	VERSION          => "0.09",
 	INSTALLDIRS      => 'site',
 	LICENSE          => "artistic_2",
 	MIN_PERL_VERSION => "5.014000",
 	META_MERGE       => {
 		"meta-spec" => {version => 2},
 		resources   => {
-			bugtracker => {web => 'https://github.com/pef-secure/dbix-struct/issues'},
+			bugtracker => {web => 'https://github.com/jef-sure/dbix-struct-github/issues'},
 			repository => {
 				type => 'git',
-				url  => 'https://github.com/pef-secure/dbix-struct.git',
-				web  => 'https://github.com/pef-secure/dbix-struct',
+				url  => 'https://github.com/jef-sure/dbix-struct-github.git',
+				web  => 'https://github.com/jef-sure/dbix-struct-github',
 			},
 		},
 	},
