@@ -282,6 +282,8 @@ sub hash_ref_slice($@) {
 	map {$_ => $hashref->{$_}} @slice;
 }
 
+my @already_exported_to;
+
 sub connector {
 	$conn;
 }
@@ -292,6 +294,14 @@ sub connector_from_pool {
 
 sub set_connector_pool {
 	$connector_pool = $_[0];
+	if (\&connector != \&connector_from_pool) {
+		no warnings 'redefine';
+		no strict 'refs';
+		*connector = \&connector_from_pool;
+		for my $aep (@already_exported_to) {
+			*{"$aep\::connector"} = \&connector;
+		}
+	}
 }
 
 sub set_connector_pool_method {
@@ -310,8 +320,6 @@ sub check_package_scalar {
 	return unless $er;
 	defined *{$er}{'SCALAR'};
 }
-
-my @already_exported_to;
 
 sub import {
 	my ($class, @args) = @_;
@@ -369,6 +377,7 @@ sub import {
 	}
 	if ($_cp) {
 		no warnings 'redefine';
+		no strict 'refs';
 		*connector = \&connector_from_pool;
 		for my $aep (@already_exported_to) {
 			*{"$aep\::connector"} = \&connector;
@@ -417,7 +426,7 @@ sub _not_yet_connected {
 	no warnings 'redefine';
 	*connect = \&connector;
 	populate();
-	$conn;
+	connector;
 }
 
 sub connect {
@@ -668,7 +677,6 @@ sub make_object_update {
 							} elsif(CORE::ref(\$set_hash{\$_}) eq 'REF' and CORE::ref(\${\$set_hash{\$_}}) eq 'ARRAY') {
 								if(CORE::defined \${\$set_hash{\$_}}->[0]) {
 									CORE::push \@bind, \@{\${\$set_hash{\$_}}}[1..\$#{\${\$set_hash{\$_}}}];
-									CORE::push \@values, \${\$set_hash{\$_}}->[0];
 									"\$_ = " . \${\$set_hash{\$_}}->[0];
 								} else {
 									"\$_ = null"
