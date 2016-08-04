@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 our @EXPORT = qw{
 	one_row
@@ -211,7 +211,9 @@ our $query_classes_namespace = 'DBQ';
 our $error_message_class     = 'DBIx::Struct::Error::String';
 our %driver_pk_insert;
 
-sub error_message (+%);
+sub error_message (+%) {
+	goto &DBIx::Struct::Error::String::error_message;
+}
 
 %driver_pk_insert = (
 	_returning => sub {
@@ -372,8 +374,7 @@ sub import {
 		}
 	}
 	if ($_emc) {
-		my $eval = "*error_message = \\&$error_message_class" . "::error_message";
-		eval $eval;
+		*error_message = \&{$error_message_class . "::error_message"};
 	}
 	if ($_cp) {
 		no warnings 'redefine';

@@ -1,3 +1,6 @@
+0.10 Thu Aug 04 11:57:00 CEST 2016
+         - fixed error_message function
+         
 0.09 Mon Jul 11 20:43:00 CEST 2016
          - added external connectors pool support
          - added -sql and -dry_run keys
