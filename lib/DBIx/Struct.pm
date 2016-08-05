@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 our @EXPORT = qw{
 	one_row
@@ -335,7 +335,7 @@ sub import {
 			--$i;
 			if (not $defconn and check_package_scalar($connector_module, 'conn')) {
 				no strict 'refs';
-				*conn = \${$connector_module . '::conn'};
+				set_connector_object(${$connector_module . '::conn'});
 			}
 		} elsif ($args[$i] eq 'connector_constructor') {
 			(undef, $connector_constructor) = splice @args, $i, 2;
@@ -368,9 +368,9 @@ sub import {
 			$_c = 1;
 		} elsif ($args[$i] eq 'connector_object') {
 			$defconn = 1;
-			my (undef, $connector_object) = splice @args, $i, 2;
+			set_connector_object($args[$i+1]);
+			splice @args, $i, 2;
 			--$i;
-			*conn = \$connector_object;
 		}
 	}
 	if ($_emc) {
