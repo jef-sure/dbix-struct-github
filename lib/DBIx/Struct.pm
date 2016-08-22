@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 our @EXPORT = qw{
 	one_row
@@ -374,6 +374,8 @@ sub import {
 		}
 	}
 	if ($_emc) {
+		no warnings 'redefine';
+		no strict 'refs';
 		*error_message = \&{$error_message_class . "::error_message"};
 	}
 	if ($_cp) {
