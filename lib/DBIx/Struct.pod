@@ -157,7 +157,9 @@ or
  -columns => $column
 
 \@columns is a reference to an array of SQL column specifications (i.e. column 
-names, * or table.*, functions, etc.). '*' is by default.
+names, * or table.*, functions, etc.). '*' is by default. 
+If column specification is a scalar reference it will be dereferenced and 
+quoted as a column identifier.
  
  -left => $table
 

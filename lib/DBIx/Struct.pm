@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.12';
+our $VERSION = '0.14';
 
 our @EXPORT = qw{
 	one_row
@@ -368,7 +368,7 @@ sub import {
 			$_c = 1;
 		} elsif ($args[$i] eq 'connector_object') {
 			$defconn = 1;
-			set_connector_object($args[$i+1]);
+			set_connector_object($args[$i + 1]);
 			splice @args, $i, 2;
 			--$i;
 		}
@@ -1325,11 +1325,16 @@ sub _build_complex_query {
 				$offset = 0 + $linked_list[++$i];
 			} elsif ($cmd eq 'columns') {
 				my $cols = $linked_list[++$i];
-				if (ref($cols)) {
+				if ('ARRAY' eq ref($cols)) {
 					push @columns, @$cols;
 				} else {
 					push @columns, $cols;
 				}
+			} else {
+				error_message {
+					result  => 'SQLERR',
+					message => "Unknown directive $le"
+				};
 			}
 		}
 	}
@@ -1366,6 +1371,7 @@ sub _build_complex_query {
 	}
 	my $from = '';
 	@columns = ('*') if not @columns;
+	@columns = map {('SCALAR' eq ref) ? DBIx::Struct::connect->dbh->quote_identifier($$_) : $_} @columns;
 	my $joined = 0;
 	for (my $idx = 0; $idx < @from; ++$idx) {
 		if (not $joined) {
@@ -1472,6 +1478,11 @@ sub execute {
 		} elsif ($_[$i] eq '-dry_run') {
 			(undef, $dry_run) = splice @_, $i, 2;
 			--$i;
+		} elsif (substr($_[$i], 0, 1) eq '-') {
+			error_message {
+				result  => 'SQLERR',
+				message => "Unknown directive $_[$i]"
+				};
 		}
 	}
 	$tblnum = 1;

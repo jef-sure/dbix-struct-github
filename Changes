@@ -1,3 +1,11 @@
+0.14 Sun Dec 26 19:50:00 CEST 2016
+         - fix column identifier quote
+         - document column identifying function
+         
+0.13 Sun Dec 26 19:05:00 CEST 2016
+         - croak on misspelled directives
+         - quote column names that are scalar references
+         
 0.12 Thu Aug 22 11:45:00 CEST 2016
          - remove 'redefine' warning
          
