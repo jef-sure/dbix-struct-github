@@ -1,3 +1,6 @@
+0.15 Wed Feb 15 01:33:00 CEST 2016
+         - fix multithreading update on the same row object
+         
 0.14 Sun Dec 26 19:50:00 CEST 2016
          - fix column identifier quote
          - document column identifying function
