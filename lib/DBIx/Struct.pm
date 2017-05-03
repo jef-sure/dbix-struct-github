@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 
 our @EXPORT = qw{
 	one_row
@@ -198,6 +198,14 @@ our @EXPORT_OK = qw{
 	hash_ref_slice
 };
 
+sub ccmap ($) {
+	my $name = $_[0];
+	$name =~ s/([[:upper:]])/_\l$1/g;
+	$name =~ s/^_//;
+	return $name;
+}
+
+our $camel_case_map = \&ccmap;
 our $conn;
 our $update_on_destroy     = 1;
 our $connector_module      = 'DBIx::Struct::Connector';
@@ -314,6 +322,14 @@ sub set_connector_object {
 	*conn = \$_[0];
 }
 
+sub set_camel_case_map {
+	error_message {
+		message => "CamelCaseMap must be code reference",
+		result  => 'SQLERR',
+	} if 'CODE' ne ref $_[0];
+	$camel_case_map = $_[0];
+}
+
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
 	no strict 'refs';
@@ -339,6 +355,9 @@ sub import {
 			}
 		} elsif ($args[$i] eq 'connector_constructor') {
 			(undef, $connector_constructor) = splice @args, $i, 2;
+			--$i;
+		} elsif ($args[$i] eq 'camel_case_map' && 'CODE' eq ref $args[$i]) {
+			(undef, $camel_case_map) = splice @args, $i, 2;
 			--$i;
 		} elsif ($args[$i] eq 'table_classes_namespace') {
 			(undef, $table_classes_namespace) = splice @args, $i, 2;
@@ -1281,6 +1300,11 @@ sub _build_complex_query {
 		}
 	);
 	my ($conditions, $groupby, $having, $limit, $offset);
+	my $one_column = 0;
+	my $distinct   = 0;
+	my $count      = 0;
+	my $all        = 0;
+
 	for (my $i = 0; $i < @linked_list; ++$i) {
 		my $le = $linked_list[$i];
 		if ('ARRAY' eq ref $le) {
@@ -1323,13 +1347,30 @@ sub _build_complex_query {
 				$limit = 0 + $linked_list[++$i];
 			} elsif ($cmd eq 'offset') {
 				$offset = 0 + $linked_list[++$i];
-			} elsif ($cmd eq 'columns') {
-				my $cols = $linked_list[++$i];
-				if ('ARRAY' eq ref($cols)) {
-					push @columns, @$cols;
-				} else {
-					push @columns, $cols;
+			} elsif ($cmd eq 'columns' || $cmd eq 'column' || $cmd eq 'distinct' || $cmd eq 'count' || $cmd eq 'all') {
+				if ($cmd eq 'all') {
+					$all = 1;
 				}
+				if ($cmd eq 'distinct') {
+					$distinct = 1;
+				}
+				if ($cmd eq 'count') {
+					$count = 1;
+				}
+				if ($i + 1 < @linked_list && substr($linked_list[$i + 1], 0, 1) ne '-') {
+					my $cols = $linked_list[++$i];
+					if ('ARRAY' eq ref($cols)) {
+						push @columns, @$cols;
+					} else {
+						push @columns, $cols;
+					}
+				}
+				if ($cmd eq 'column') {
+					++$one_column;
+				} else {
+					$one_column += 2;
+				}
+
 			} else {
 				error_message {
 					result  => 'SQLERR',
@@ -1398,7 +1439,24 @@ sub _build_complex_query {
 			$joined = 0;
 		}
 	}
-	my $ret = "select " . join(", ", @columns) . " from" . $from;
+	my $what = join(", ", @columns);
+	if ($count) {
+		$one_column = 1;
+		if ($distinct) {
+			$what = $from[0][_table_alias] . ".*" if $what eq '*';
+			$what = "count(distinct $what)";
+		} elsif ($all) {
+			$what = $from[0][_table_alias] . ".*" if $what eq '*';
+			$what = "count(all $what)";
+		} else {
+			$what = "count(*)";
+		}
+	} else {
+		if ($distinct) {
+			$what = "distinct $what";
+		}
+	}
+	my $ret = "select $what from" . $from;
 	if (not defined $where) {
 		my $sql_grp     = _parse_groupby($groupby);
 		my $having_bind = [];
@@ -1422,7 +1480,11 @@ sub _build_complex_query {
 		$where .= " offset $offset" if $offset;
 	}
 	$ret .= " $where" if $where;
-	$ret;
+	if (wantarray) {
+		return ($ret, $one_column == 1);
+	} else {
+		return $ret;
+	}
 }
 
 sub _parse_groupby {
@@ -1482,7 +1544,7 @@ sub execute {
 			error_message {
 				result  => 'SQLERR',
 				message => "Unknown directive $_[$i]"
-				};
+			};
 		}
 	}
 	$tblnum = 1;
@@ -1549,10 +1611,15 @@ sub execute {
 	}
 	my $query;
 	my @query_bind;
+	my $one_column = 0;
 	if ($simple_table) {
 		$query = qq{select * from $table $where};
 	} else {
-		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind, $where);
+		if (not ref $table) {
+			$query = "$table $where";
+		} else {
+			($query, $one_column) = _build_complex_query($table, \@query_bind, $where);
+		}
 		$ncn = make_name($query);
 	}
 	if ($sql) {
@@ -1583,7 +1650,7 @@ sub execute {
 				conditions => Dumper($conditions),
 				};
 			setup_row($sth, $ncn, $up_interface);
-			return $code->($sth, $ncn);
+			return $code->($sth, $ncn, $one_column);
 		}
 	);
 }
@@ -1591,11 +1658,12 @@ sub execute {
 sub one_row {
 	return execute(
 		sub {
-			my ($sth, $ncn) = @_;
+			my ($sth, $ncn, $one_column) = @_;
 			my $data = $sth->fetchrow_arrayref;
 			$sth->finish;
 			return if not $data;
-			return $ncn->new([@$data]);
+			return $ncn->new([@$data]) if !$one_column;
+			return $data->[0];
 		},
 		@_
 	);
@@ -1611,7 +1679,7 @@ sub all_rows {
 	}
 	return execute(
 		sub {
-			my ($sth, $ncn) = @_;
+			my ($sth, $ncn, $one_column) = @_;
 			my @rows;
 			my $row;
 			if ($mapfunc) {
@@ -1620,7 +1688,11 @@ sub all_rows {
 					push @rows, $mapfunc->();
 				}
 			} else {
-				push @rows, $ncn->new([@$row]) while ($row = $sth->fetch);
+				if ($one_column) {
+					push @rows, $row->[0] while ($row = $sth->fetch);
+				} else {
+					push @rows, $ncn->new([@$row]) while ($row = $sth->fetch);
+				}
 			}
 			return \@rows;
 		},
