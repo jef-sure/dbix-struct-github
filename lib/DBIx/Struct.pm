@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 our @EXPORT = qw{
 	one_row
@@ -485,6 +485,107 @@ sub populate {
 	);
 	setup_row($_) for @tables;
 }
+
+#<<<
+my @uneq = (
+	qr/LessThanEqual$/,    '<=',
+	qr/LessThan$/,         '<',
+	qr/GreaterThanEqual$/, '>=',
+	qr/GreaterThan$/,      '>',
+	qr/IsNull$/,           sub {"'$_[0]' => {'=', undef}"},
+	qr/IsNotNull$/,        sub {"'$_[0]' => {'!=', undef}"},
+	qr/IsNot$/,            '!=',
+	qr/NotNull$/,          sub {"'$_[0]' => {'!=', undef}"},
+	qr/NotEquals$/,        '!=',
+	qr/NotIn$/,            '-not_in',
+	qr/NotLike$/,          '-not_like',
+	qr/IsEqualTo$/,        '=',
+	qr/IsTrue$/,           sub {"-bool => '$_[0]'"},
+	qr/IsFalse$/,          sub {"-not_bool => '$_[0]'"},
+	qr/Equals$/,           '=',
+	qr/True$/,             sub {"-bool => '$_[0]'"},
+	qr/False$/,            sub {"-not_bool => '$_[0]'"},
+	qr/Like$/,             '-like',
+	qr/Is$/,               '=',
+	qr/Not$/,              '!=',
+	qr/In$/,               '-in',
+);
+#>>>
+
+sub _parse_find_by {
+	my ($table, $find) = @_;
+	$find =~ s/^find(?<what>.*?)By(?![[:lower:]])// || $find =~ s/^find(?<what>.*)// or die "bad pattern: $find";
+	my $what = $+{what} || 'All';
+	$what =~ s/(?<distinct>Distinct)(?![[:lower:]])//;
+	my $distinct = $+{distinct} // 0;
+	$what =~ s/((?<type>(All|One|First))(?<limit>\d+)?)(?![[:lower:]])//;
+	my $type = $+{type} // 'All';
+	my $limit = $+{limit};
+	$what =~ s/(?<column>\w+)//;
+	my $column = $camel_case_map->($+{column} // '');
+	$find =~ s/OrderBy(?<order>.*?)(?<asc>Asc|Desc)(?=[[:upper:]]|$)// || $find =~ s/OrderBy(?<order>.*?)$//;
+	my $order = $+{order};
+	my $asc   = $+{asc} || 'Asc';
+	my $where = $find;
+
+	if ($type eq 'First' && !$limit) {
+		$limit = 1;
+	}
+	if ($limit && $limit == 1) {
+		$type = 'One';
+	}
+	my $pi = 1;
+	my $pp = sub {
+		my ($param) = @_;
+		my $found;
+		for (my $i = 0; $i < @uneq; $i += 2) {
+			if ($param =~ s/$uneq[$i]//) {
+				$found = $i + 1;
+				last;
+			}
+		}
+		$param = $camel_case_map->($param);
+		my $ret;
+		if ($found) {
+			if ('CODE' eq ref $uneq[$found]) {
+				$ret = $uneq[$found]->($param);
+			} else {
+				$ret = "'$param' => { '$uneq[$found]' => \$_[$pi]}";
+				++$pi;
+			}
+		} else {
+			$ret = "'$param' => \$_[$pi]";
+			++$pi;
+		}
+		$ret;
+	};
+#<<<
+	my $conds = join(
+		", ",
+		map {
+			/And(?![[:lower:]])/
+				? '-and => [' . join(", ", map {$pp->($_)} split /And(?![[:lower:]])/x, $_) . ']'
+				: $pp->($_);
+		} split /Or(?![[:lower:]])/, $where
+	);
+#>>>
+	my $obj = $type eq 'One' ? 'DBIx::Struct::one_row' : 'DBIx::Struct::all_rows';
+	my $flags = $column ? ", -column => '$column'" : '';
+	$flags = $distinct ? $flags ? ", -distinct => '$column'" : ", '-distinct'" : $flags;
+	$order
+		= $order
+		? $asc eq 'Asc'
+			? ", -order_by => '" . $camel_case_map->($order) . "'"
+			: ", -order_by => {-desc => '" . $camel_case_map->($order) . "'}"
+		: '';
+	$where = $conds ? ", -where => [$conds]" : '';
+	$limit = $limit && $limit > 1 && $type ne 'One' ? ", -limit => $limit" : '';
+	my $tspec = "'$table'" . $flags;
+	$tspec = "[$tspec]" if $column;
+	$tspec .= $where . $order . $limit;
+	return "sub { $obj($tspec) }";
+}
+
 
 sub _row_data ()    {0}
 sub _row_updates () {1}
@@ -824,6 +925,39 @@ DEL
 DEL
 	}
 	$delete;
+}
+
+sub make_object_autoload_find {
+	my ($table, $pk_where, $pk_row_data) = @_;
+	my $find = '';
+	if (not ref $table) {
+		$find = <<AUTOLOAD;
+		sub AUTOLOAD {
+			my \$self = \$_[0];
+			( my \$method = \$AUTOLOAD ) =~ s{.*::}{};
+			 
+			if(Scalar::Util::blessed \$self) {
+				\$self = CORE::ref \$self;
+			}
+			DBIx::Struct::error_message {
+				result  => 'SQLERR',
+				message => "Unknown method \$method for $table"
+			} if !\$self || !"\$self"->can("tableName") || \$method !~ /^find/;
+			my \$func = DBIx::Struct::_parse_find_by('$table', \$method);
+			my \$ncn = DBIx::Struct::make_name('$table');
+			{
+				no strict 'refs';
+				*{\$ncn."::".\$method} = eval \$func;
+				DBIx::Struct::error_message {
+					result  => 'SQLERR',
+					message => "Error creating method \$method for $table: \$!"
+				} if \$!;
+			}
+			goto &{\$ncn."::".\$method};
+		}
+AUTOLOAD
+	}
+	$find;
 }
 
 sub make_object_fetch {
@@ -1219,6 +1353,8 @@ ACC
 		use Carp;
 		use SQL::Abstract;
 		use JSON;
+		use Scalar::Util 'blessed';
+		use vars qw(\$AUTOLOAD);
 		our \%fields = ($fields);
 		our \%json_fields = ($json_fields);
 PHD
@@ -1234,7 +1370,11 @@ PHD
 PHD
 		}
 		$package_header .= <<PHD;
-		our \$table_name = "$table";
+		sub tableName () {"$table"}
+PHD
+	} else {
+		$package_header .= <<PHD;
+		sub tableName () {"\\\$query\\\$$ncn"}
 PHD
 	}
 	my $new              = make_object_new($table, $required, $pk_row_data, $pk_returninig);
@@ -1244,6 +1384,7 @@ PHD
 	my $update           = make_object_update($table, $pk_where, $pk_row_data);
 	my $delete           = make_object_delete($table, $pk_where, $pk_row_data);
 	my $fetch            = make_object_fetch($table, $pk_where, $pk_row_data);
+	my $autoload         = make_object_autoload_find($table, $pk_where, $pk_row_data);
 	my $destroy;
 
 	if (not ref $table) {
@@ -1257,7 +1398,7 @@ DESTROY
 		$destroy = '';
 	}
 	my $eval_code = join "", $package_header, $select_keys, $new,
-		$filter_timestamp, $set, $data, $fetch,
+		$filter_timestamp, $set, $data, $fetch, $autoload,
 		$update, $delete, $destroy, $accessors, $foreign_tables,
 		$references_tables;
 
@@ -1299,7 +1440,7 @@ sub _build_complex_query {
 			message => "Unsupported type of query: " . ref($table)
 		}
 	);
-	my ($conditions, $groupby, $having, $limit, $offset);
+	my ($conditions, $groupby, $having, $limit, $offset, $orderby);
 	my $one_column = 0;
 	my $distinct   = 0;
 	my $count      = 0;
@@ -1341,6 +1482,8 @@ sub _build_complex_query {
 				$conditions = $linked_list[++$i];
 			} elsif ($cmd eq 'group_by') {
 				$groupby = $linked_list[++$i];
+			} elsif ($cmd eq 'order_by') {
+				$orderby = $linked_list[++$i];
 			} elsif ($cmd eq 'having') {
 				$having = $linked_list[++$i];
 			} elsif ($cmd eq 'limit') {
@@ -1359,10 +1502,14 @@ sub _build_complex_query {
 				}
 				if ($i + 1 < @linked_list && substr($linked_list[$i + 1], 0, 1) ne '-') {
 					my $cols = $linked_list[++$i];
-					if ('ARRAY' eq ref($cols)) {
-						push @columns, @$cols;
-					} else {
-						push @columns, $cols;
+					if ($cols && $cols !~ /^\d|^true$/) {
+						if ('ARRAY' eq ref($cols)) {
+							push @columns, @$cols;
+						} else {
+							push @columns, $cols;
+						}
+					} elsif (($cols =~ /^\d+$/ && $cols == 0) || $cols eq '') {
+						$distinct = 0 if $cmd eq 'distinct';
 					}
 				}
 				if ($cmd eq 'column') {
@@ -1511,10 +1658,15 @@ sub _parse_having {
 
 sub execute {
 	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset, $up_interface, $sql, $dry_run);
+	my $distinct = '';
 	for (my $i = 2; $i < @_; ++$i) {
 		next unless defined $_[$i] and not ref $_[$i];
 		if ($_[$i] eq '-group_by') {
 			(undef, $groupby) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-distinct') {
+			$distinct = ' distinct';
+			splice @_, $i, 1;
 			--$i;
 		} elsif ($_[$i] eq '-having') {
 			(undef, $having) = splice @_, $i, 2;
@@ -1613,7 +1765,7 @@ sub execute {
 	my @query_bind;
 	my $one_column = 0;
 	if ($simple_table) {
-		$query = qq{select * from $table $where};
+		$query = qq{select$distinct * from $table $where};
 	} else {
 		if (not ref $table) {
 			$query = "$table $where";

@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME             => "DBIx::Struct",
 	AUTHOR           => "Anton Petrusevich",
-	VERSION          => "0.16",
+	VERSION          => "0.17",
 	INSTALLDIRS      => 'site',
 	LICENSE          => "artistic_2",
 	MIN_PERL_VERSION => "5.014000",
@@ -21,6 +21,7 @@ WriteMakefile(
 		'DBIx::Connector' => "0.52",
 		'Digest::MD5'     => 0,
 		'JSON'            => 0,
+		'Scalar::Util'    => 0,
 		'SQL::Abstract'   => 0,
 	},
 	TEST_REQUIRES => {'Test::More' => 0},

@@ -1,3 +1,7 @@
+0.17 Fri May 05 15:30:00 CEST 2017
+         - added findBy
+         - fixed -distinct
+         
 0.16 Wed May 03 20:14:00 CEST 2017
          - added -distinct, -count and -all
          

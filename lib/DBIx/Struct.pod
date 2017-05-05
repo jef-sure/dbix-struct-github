@@ -199,27 +199,35 @@ right [OUTER] join
 
 [INNER] join
  
- -on => $join_condition_string
+ -on => $join_condition_string or L<SQL::Abstract>-where search conditions
 
 on($join_condition_string)
 
- -using => $join_condition_string
+ -using => $join_condition_string or L<SQL::Abstract>-where search conditions
 
 using($join_field_string)
  
- my $count = one_row([table => "count(*)"], 
-                      { date => {'>=', \"now() - interval '1 hour'"})
-                      ->count;
+ my $count = one_row([table => "-count"], 
+                      { date => {'>=', \"now() - interval '1 hour'"});
 
 This module is smart enough to determine automatically table connections.
 
- my $name = one_row([client => session => -columns => "name"],
-                      { session_key => $input->{session}})
-                      ->name;
+ my $name = one_row([client => session => -column => "name"],
+                      { session_key => $input->{session}});
 
 There are some named paramters can be used together with positional paramaters:
 
 =over
+
+=item -distinct
+
+Selects only unique rows. This is different from 
+"array reference table description": it takes no C<column> expression argument; 
+it can't be "off"; it is possible to return normal row object from table.
+
+ my $people = all_rows(people => "-distinct");
+
+This statement generates C<select distinct * from people>.
 
 =item -group_by
 
@@ -490,6 +498,42 @@ Fields with datatype 'json' or 'jsonb' can be transparently used as perl-structu
  
 
 =head2 Syntax sugar
+
+=head3 find...By...
+
+This is inspired by Spring-Data for Java. This automatically generated function
+compiled on first call and selects row(s) or column value(s). 
+It should be called on table class:
+
+ my $authors_name = DBC::Article->findOneFirstNameById($id);
+ my $authors_names_array_ref = DBC::Article->findFirst10FirstNameByOrderByLastNameAsc;
+
+Format of this find-family is following:
+
+ find-func = find<what>By<search>
+ what = <plural><column><distinct>
+ plural = All|One|First[$limit] | ''
+ * One or First or First1 - selects only one row
+ column = one column name | ''
+ * returns direct value(s)
+ distinct = Distinct | ''
+ * select only distinct values
+ search = <where><order>
+ order = OrderBy<column-to-order-by>(Asc|Desc) | ''
+ where = <column>|<column>And<column>|<column>Or<column>
+ column = column name | column(LessThanEqual|LessThan|GreaterThanEqual|
+                        GreaterThan|IsNull|IsNotNull|IsNot|NotNull|
+                        NotEquals|NotIn|NotLike|IsEqualTo|IsTrue|
+                        IsFalse|Equals|True|False|Like|Is|Not|In)
+
+Column names are converted from CamelCase to underscore lowercase style: 
+FirstName -> first_name. More examples:
+
+ DBC::User->findAll;
+ DBC::User->findFirst10ByOrderByLastName;
+ DBC::User->findByAddressZipCode($zip);
+ DBC::User->findByLoginDateGreaterThan($date);
+ DBC::User->findByLoginDateGreaterThanAndReferralIsNull($date);
 
 =head3 Referenced tables
 
