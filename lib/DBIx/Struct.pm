@@ -185,7 +185,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 
 our @EXPORT = qw{
 	one_row
@@ -726,7 +726,7 @@ sub make_object_set {
 				} elsif(not CORE::ref(\$_[1])) {
 					for(my \$i = 1; \$i < \@_; \$i += 2) {
 						if (CORE::exists \$fields{\$_[\$i]}) {
-							my \$f = \$fields{\$_[\$i]};
+							my \$f = \$_[\$i];
 							\$self->\$f(\$_[\$i + 1]);
 						}
 					}
