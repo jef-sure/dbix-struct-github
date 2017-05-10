@@ -189,7 +189,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 
 our @EXPORT = qw{
 	one_row
@@ -713,9 +713,11 @@ FTS
 }
 
 sub make_object_set {
-	my $set = <<SET;
+	my $table = $_[0];
+	my $set   = <<SET;
 		sub set {
 			my \$self = \$_[0];
+			my \@unknown_columns;
 			if(CORE::defined(\$_[1])) {
 				if(CORE::ref(\$_[1]) eq 'ARRAY') {
 					\$self->[@{[_row_data]}] = \$_[1];
@@ -724,6 +726,8 @@ sub make_object_set {
 					for my \$f (CORE::keys \%{\$_[1]}) {
 						if (CORE::exists \$fields{\$f}) {
 							\$self->\$f(\$_[1]->{\$f});
+						} else {
+							CORE::push \@unknown_columns, \$f;
 						}
 					}
 				} elsif(not CORE::ref(\$_[1])) {
@@ -731,10 +735,16 @@ sub make_object_set {
 						if (CORE::exists \$fields{\$_[\$i]}) {
 							my \$f = \$_[\$i];
 							\$self->\$f(\$_[\$i + 1]);
+						} else {
+							CORE::push \@unknown_columns, \$_[\$i];
 						}
 					}
 				}
 			}
+			DBIx::Struct::error_message {
+					result  => 'SQLERR',
+					message => 'unknown columns '.CORE::join(", ", \@unknown_columns).' for $table->data'
+			} if \@unknown_columns;
 			\$self;
 		}
 SET
@@ -742,7 +752,8 @@ SET
 }
 
 sub make_object_data {
-	my $data = <<DATA;
+	my $table = $_[0];
+	my $data  = <<DATA;
 		sub data {
 			my \$self = \$_[0];
 			my \@ret_keys;
@@ -752,7 +763,7 @@ sub make_object_data {
 					if(!\@{\$_[1]}) {
 						\$ret = \$self->[@{[_row_data]}];
 					} else {
-						\$ret = [CORE::map {\$self->[@{[_row_data]}]->[\$fields{\$_}] } CORE::grep {CORE::exists \$fields{\$_}} \@{\$_[1]}];
+						\$ret = [CORE::map {\$self->[@{[_row_data]}]->[\$fields{\$_}] } \@{\$_[1]}];
 					}
 				} else {
 					for my \$k (\@_[1..\$#_]) {
@@ -762,12 +773,13 @@ sub make_object_data {
 			} else {
 				\@ret_keys = keys \%fields;
 			}
+			my \@unknown_columns = CORE::grep {not CORE::exists \$fields{\$_}} \@ret_keys;
+			DBIx::Struct::error_message {
+					result  => 'SQLERR',
+					message => 'unknown columns '.CORE::join(", ", \@unknown_columns).' for $table->data'
+			} if \@unknown_columns;
 			\$ret = { 
-				CORE::map { 
-					CORE::exists(\$json_fields{\$_})
-					? (\$_ => \$self->\$_->accessor)
-					: (\$_ => \$self->\$_) 
-				} \@ret_keys
+				CORE::map {\$_ => \$self->\$_} \@ret_keys
 			} if not CORE::defined \$ret;
 			\$ret;
 		}
@@ -1072,7 +1084,8 @@ sub _parse_interface ($) {
 sub make_object_to_json {
 	my ($table, $field_types, $fields) = @_;
 	my $field_to_types = join ",\n\t\t\t\t ", map {
-		qq|"$_" => !defined(\$self->[@{[_row_data]}][$fields->{$_}])? undef: | . (
+		qq|"$_" => !defined(\$self->[@{[_row_data]}][$fields->{$_}])? undef: |
+			. (
 			  $field_types->{$_} eq 'number'  ? "0+\$self->[@{[_row_data]}][$fields->{$_}]"
 			: $field_types->{$_} eq 'boolean' ? "\$self->[@{[_row_data]}][$fields->{$_}]? \\1: \\0"
 			: $field_types->{$_} eq 'json'
@@ -1427,8 +1440,8 @@ PHD
 	}
 	my $new              = make_object_new($table, $required, $pk_row_data, $pk_returninig);
 	my $filter_timestamp = make_object_filter_timestamp($timestamps);
-	my $set              = make_object_set();
-	my $data             = make_object_data();
+	my $set              = make_object_set($table);
+	my $data             = make_object_data($table);
 	my $update           = make_object_update($table, $pk_where, $pk_row_data);
 	my $delete           = make_object_delete($table, $pk_where, $pk_row_data);
 	my $fetch            = make_object_fetch($table, $pk_where, $pk_row_data);
