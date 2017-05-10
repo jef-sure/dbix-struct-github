@@ -1,3 +1,6 @@
+0.19 Tue May 09 20:00:00 CEST 2017
+         - added TO_JSON to row objects
+         
 0.18 Tue May 09 20:00:00 CEST 2017
          - fixed make_object_set
          

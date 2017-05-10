@@ -134,6 +134,10 @@ sub revert {
 	$_[0] = to_json $_[0][1];
 }
 
+sub data {
+	$_[0][1];
+}
+
 sub accessor {
 	$_[0][0];
 }
@@ -185,7 +189,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 our @EXPORT = qw{
 	one_row
@@ -569,8 +573,8 @@ sub _parse_find_by {
 		} split /Or(?![[:lower:]])/, $where
 	);
 #>>>
-	my $obj = $type eq 'One' ? 'DBIx::Struct::one_row' : 'DBIx::Struct::all_rows';
-	my $flags = $column ? ", -column => '$column'" : '';
+	my $obj   = $type eq 'One' ? 'DBIx::Struct::one_row'  : 'DBIx::Struct::all_rows';
+	my $flags = $column        ? ", -column => '$column'" : '';
 	$flags = $distinct ? $flags ? ", -distinct => '$column'" : ", '-distinct'" : $flags;
 	$order
 		= $order
@@ -585,7 +589,6 @@ sub _parse_find_by {
 	$tspec .= $where . $order . $limit;
 	return "sub { $obj($tspec) }";
 }
-
 
 sub _row_data ()    {0}
 sub _row_updates () {1}
@@ -1066,6 +1069,46 @@ sub _parse_interface ($) {
 	\%ret;
 }
 
+sub make_object_to_json {
+	my ($table, $field_types, $fields) = @_;
+	my $field_to_types = join ",\n\t\t\t\t ", map {
+		qq|"$_" => !defined(\$self->[@{[_row_data]}][$fields->{$_}])? undef: | . (
+			  $field_types->{$_} eq 'number'  ? "0+\$self->[@{[_row_data]}][$fields->{$_}]"
+			: $field_types->{$_} eq 'boolean' ? "\$self->[@{[_row_data]}][$fields->{$_}]? \\1: \\0"
+			: $field_types->{$_} eq 'json'
+			? "CORE::ref(\$self->[@{[_row_data]}]->[$fields->{$_}])? \$self->[@{[_row_data]}][$fields->{$_}]->data"
+				. ": JSON::from_json(\$self->[@{[_row_data]}][$fields->{$_}])"
+			: "\"\$self->[@{[_row_data]}][$fields->{$_}]\""
+			)
+	} keys %$field_types;
+	my $set = <<TOJSON;
+		sub TO_JSON {
+			my \$self = \$_[0];
+			return +{
+				$field_to_types
+			};
+		}
+TOJSON
+}
+
+sub _field_type_from_name {
+	my $type_name = $_[0];
+	return 'string' if not defined $type_name;
+	if (   $type_name =~ /int(\d+)?$/i
+		|| $type_name =~ /integer/i
+		|| $type_name =~ /bit$/
+		|| $type_name =~ /float|double|real|decimal|numeric/i)
+	{
+		return 'number';
+	} elsif ($type_name =~ /json/i) {
+		return 'json';
+	} elsif ($type_name =~ /bool/i) {
+		return 'boolean';
+	} else {
+		return 'string';
+	}
+}
+
 sub setup_row {
 	my ($table, $ncn, $interface) = @_;
 	error_message {
@@ -1084,6 +1127,7 @@ sub setup_row {
 	my @refkeys;
 	my %json_fields;
 	my $connector = DBIx::Struct::connect;
+	my %field_types;
 
 	if (not ref $table) {
 		# means this is just one simple table
@@ -1108,7 +1152,8 @@ sub setup_row {
 					if ($chr->{NULLABLE} == 0 && !defined($chr->{COLUMN_DEF})) {
 						push @required, $chr->{COLUMN_NAME};
 					}
-					$fields{$chr->{COLUMN_NAME}} = $i++;
+					$fields{$chr->{COLUMN_NAME}}      = $i++;
+					$field_types{$chr->{COLUMN_NAME}} = _field_type_from_name($chr->{TYPE_NAME});
 				}
 				@pkeys = $_->primary_key(undef, undef, $table);
 				if (!@pkeys && @required) {
@@ -1148,14 +1193,16 @@ sub setup_row {
 			sub {
 				for (my $cn = 0; $cn < @{$table->{NAME}}; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
+					$field_types{$table->{NAME}->[$cn]} = _field_type_from_name($ti->{TYPE_NAME});
 					push @timestamp_fields, $table->{NAME}->[$cn]
-						if $ti && $ti->{TYPE_NAME} =~ /^time/;
+						if $ti->{TYPE_NAME} && $ti->{TYPE_NAME} =~ /^time/;
 					$json_fields{$table->{NAME}->[$cn]} = undef
-						if $ti && $ti->{TYPE_NAME} =~ /^json/;
+						if $ti->{TYPE_NAME} && $ti->{TYPE_NAME} =~ /^json/;
 				}
 			}
 		);
 	}
+	my $field_types = join ", ", map {qq|"$_" => '$field_types{$_}'|} keys %field_types;
 	my $fields      = join ", ", map {qq|"$_" => $fields{$_}|} keys %fields;
 	my $json_fields = join ", ", map {qq|"$_" => undef|} keys %json_fields;
 	my $required    = '';
@@ -1355,6 +1402,7 @@ ACC
 		use JSON;
 		use Scalar::Util 'blessed';
 		use vars qw(\$AUTOLOAD);
+		our \%field_types = ($field_types);
 		our \%fields = ($fields);
 		our \%json_fields = ($json_fields);
 PHD
@@ -1385,6 +1433,7 @@ PHD
 	my $delete           = make_object_delete($table, $pk_where, $pk_row_data);
 	my $fetch            = make_object_fetch($table, $pk_where, $pk_row_data);
 	my $autoload         = make_object_autoload_find($table, $pk_where, $pk_row_data);
+	my $to_json          = make_object_to_json($table, \%field_types, \%fields);
 	my $destroy;
 
 	if (not ref $table) {
@@ -1398,9 +1447,8 @@ DESTROY
 		$destroy = '';
 	}
 	my $eval_code = join "", $package_header, $select_keys, $new,
-		$filter_timestamp, $set, $data, $fetch, $autoload,
-		$update, $delete, $destroy, $accessors, $foreign_tables,
-		$references_tables;
+		$set,    $data,   $fetch,   $autoload,  $to_json,        $filter_timestamp,
+		$update, $delete, $destroy, $accessors, $foreign_tables, $references_tables;
 
 	# print $eval_code;
 	eval $eval_code;
