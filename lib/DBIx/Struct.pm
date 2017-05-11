@@ -114,11 +114,12 @@ sub factory {
 	my ($class, $value_ref, $update_hash, $hash_key) = @_;
 	my $self;
 	if (not ref $$value_ref) {
-		return if not $$value_ref;
-		my $jv = from_json $$value_ref;
+		my $jv = from_json($$value_ref) if $$value_ref;
 		$$value_ref = $jv if $jv;
 	}
-	if ('HASH' eq ref $$value_ref) {
+	if (not defined $$value_ref) {
+		$self = [undef, undef];
+	} elsif ('HASH' eq ref $$value_ref) {
 		my %h;
 		tie %h, 'DBIx::Struct::JSON::Hash', $$value_ref, $update_hash, $hash_key;
 		$self = [\%h, $$value_ref];
@@ -131,7 +132,7 @@ sub factory {
 }
 
 sub revert {
-	$_[0] = to_json $_[0][1];
+	$_[0] = defined($_[0][1]) ? to_json $_[0][1] : undef;
 }
 
 sub data {
@@ -189,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.20';
+our $VERSION = '0.22';
 
 our @EXPORT = qw{
 	one_row
@@ -907,21 +908,7 @@ sub make_object_delete {
 		$delete = <<DEL;
 		sub delete {
 			my \$self = \$_[0];
-			if(\@_ > 1) {
-				my (\$where, \@bind);
-				my \$cond = \$_[1];
-				if(not CORE::ref(\$cond)) {
-					\$cond = {(selectKeys)[0] => \$_[1]};
-				}
-				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				return DBIx::Struct::connect->run(sub {
-					\$_->do(qq{delete from $table \$where}, undef, \@bind)
-					or DBIx::Struct::error_message {
-						result  => 'SQLERR',
-						message => 'error '.\$_->errstr.' updating table $table'
-					}
-				});
-			} else {
+			if(Scalar::Util::blessed \$self) {
 				DBIx::Struct::connect->run(
 					sub {
 						\$_->do(qq{delete from $table where $pk_where}, undef, $pk_row_data)
@@ -930,8 +917,34 @@ sub make_object_delete {
 							message => 'error '.\$_->errstr.' updating table $table'
 						}
 					});
+				return \$self;
 			}
-			\$self;
+			my \$where = '';
+			my \@bind;
+			my \$cond = \$_[1] if \@_ > 1;
+			if(not CORE::ref(\$cond)) {
+				\$cond = {};
+				my \@keys = selectKeys();
+				for(my \$i = 1; \$i < \@_; ++\$i) {
+					DBIx::Struct::error_message {
+						result  => 'SQLERR',
+						message => "Too many keys to delete for $table"
+					} if not CORE::defined \$keys[\$i-1];
+					\$cond->{\$keys[\$i-1]} = \$_[\$i];
+				}
+			}
+			my \@rpar = ();
+			if(\$cond) {
+				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
+				\@rpar = (undef, \@bind);
+			}
+			return DBIx::Struct::connect->run(sub {
+				\$_->do(qq{delete from $table \$where}, \@rpar)
+				or DBIx::Struct::error_message {
+					result  => 'SQLERR',
+					message => 'error '.\$_->errstr.' updating table $table'
+				}
+			});
 		}
 DEL
 	} else {
@@ -1875,8 +1888,18 @@ sub one_row {
 			my $data = $sth->fetchrow_arrayref;
 			$sth->finish;
 			return if not $data;
-			return $ncn->new([@$data]) if !$one_column;
-			return $data->[0];
+			if ($one_column) {
+#<<<
+# json type is not working yet here					
+#				no strict 'refs';
+#				my @f = %{$ncn . "::field_types"};
+#				if ($f[1] eq 'json') {
+#					return (defined($data->[0]) ? from_json($data->[0]) : undef);
+#				} else {
+					return $data->[0];
+#>>>				}
+			}
+			return $ncn->new([@$data]);
 		},
 		@_
 	);
@@ -1902,7 +1925,16 @@ sub all_rows {
 				}
 			} else {
 				if ($one_column) {
-					push @rows, $row->[0] while ($row = $sth->fetch);
+#<<<
+# json type is not working yet here					
+#					no strict 'refs';
+#					my @f = %{$ncn . "::field_types"};
+#					if ($f[1] eq 'json') {
+#						push @rows, (defined($row->[0]) ? from_json($row->[0]) : undef) while ($row = $sth->fetch);
+#					} else {
+						push @rows, $row->[0] while ($row = $sth->fetch);
+#					}
+#>>>
 				} else {
 					push @rows, $ncn->new([@$row]) while ($row = $sth->fetch);
 				}
