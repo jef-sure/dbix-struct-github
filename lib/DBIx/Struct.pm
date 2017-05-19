@@ -190,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 our @EXPORT = qw{
 	one_row
