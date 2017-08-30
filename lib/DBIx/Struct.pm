@@ -190,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 our @EXPORT = qw{
 	one_row
@@ -1497,7 +1497,7 @@ DESTROY
 		$set,    $data,   $fetch,   $autoload,  $to_json,        $filter_timestamp,
 		$update, $delete, $destroy, $accessors, $foreign_tables, $references_tables;
 
-	print $eval_code;
+	# print $eval_code;
 	eval $eval_code;
 	error_message {
 		result  => 'SQLERR',
