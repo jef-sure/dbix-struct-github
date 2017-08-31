@@ -190,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.26';
+our $VERSION = '0.27';
 
 our @EXPORT = qw{
 	one_row
@@ -1215,7 +1215,7 @@ sub setup_row {
 				}
 				$sth = $_->foreign_key_info(undef, undef, $table, undef, undef, undef);
 				if ($sth) {
-					@refkeys = grep {$_->{PKTABLE_NAME} && $_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/}
+					@refkeys = grep {($_->{PKTABLE_NAME} || $_->{UK_TABLE_NAME}) && $_->{FK_COLUMN_NAME} !~ /[^a-z_0-9]/}
 						map {
 						$_->{FK_COLUMN_NAME} = $_->{FKCOLUMN_NAME}
 							if $_->{FKCOLUMN_NAME};
