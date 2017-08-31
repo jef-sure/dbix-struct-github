@@ -190,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.27';
+our $VERSION = '0.28';
 
 our @EXPORT = qw{
 	one_row
@@ -250,7 +250,7 @@ INS
 INS
 	},
 	_last_id_undef => sub {
-		my ($table, $insert_exp, $pk_row_data) = @_;
+		my ($table, $pk_row_data) = @_;
 		my $ret;
 		$ret = <<INS;
 						\$_->do(\$insert, undef, \@bind)
@@ -261,12 +261,12 @@ INS
 INS
 		if ($pk_row_data) {
 			$ret .= <<INS;
-						$pk_row_data = $_->last_insert_id(undef, undef, undef, undef);
+						$pk_row_data = \$_->last_insert_id(undef, undef, undef, undef);
 INS
 		}
 	},
 	_last_id_empty => sub {
-		my ($table, $insert_exp, $pk_row_data) = @_;
+		my ($table, $pk_row_data) = @_;
 		my $ret;
 		$ret = <<INS;
 						\$_->do(\$insert, undef, \@bind)
@@ -277,7 +277,7 @@ INS
 INS
 		if ($pk_row_data) {
 			$ret .= <<INS;
-						$pk_row_data = $_->last_insert_id("", "", "", "");
+						$pk_row_data = \$_->last_insert_id("", "", "", "");
 INS
 		}
 	}
@@ -1177,6 +1177,7 @@ sub setup_row {
 					if ($chr->{TYPE_NAME} =~ /^json/) {
 						$json_fields{$chr->{COLUMN_NAME}} = undef;
 					}
+					$chr->{COLUMN_DEF} ||= $chr->{mysql_is_auto_increment};
 					if ($chr->{NULLABLE} == 0 && !defined($chr->{COLUMN_DEF})) {
 						push @required, $chr->{COLUMN_NAME};
 					}
