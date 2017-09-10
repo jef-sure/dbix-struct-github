@@ -15,10 +15,44 @@ DBIx::Struct - convenience SQL functions with Class::Struct-like row objects
     $row->field('new data');
 
     $row->update;
-
+    
+    # in place update
+    one_row("table", $user_id)->email('user@example.org');
+    
     my $rows = all_rows("table", {field => "some data"});
-
+    
+    # or shortly
+    my $rows = all_rows(["table_users" => 
+                        -columns => [qw(id email enable avatar)]]);
+    
     print $rows->[0]->field;
+
+    # select 1 row and return specified colums
+    sub example {
+      my $user = one_row("table_users", { user_id => $user_id });
+      # return
+      return $user->data([qw|email avatar|]);
+    }
+
+    # Easy insert new row with hash_ref_slice
+    my $params = { email => '', password => '', ... };
+    my $row = new_row( table_users => hash_ref_slice $params, qw(email password) );
+
+    # Join tables: automatically join - based on foreign keys
+    # Or manual with -on option
+    my $rows = all_rows([
+                          "table_1" => 
+                          -join     => "table_2" ],
+                          # for manual join  - uncomment
+                          # -on     => "table_1.some_id = table_2.id",
+                          -order_by => "table_2.id",
+                          -sql      => $sql,
+                          -limit    => 10,
+                          -offset   => 0, );
+    
+    # Easy to view generated SQL
+    $rows = all_rows(["table"], -sql => $sql );
+    print $sql;
 
 =head1 DESCRIPTION
 
