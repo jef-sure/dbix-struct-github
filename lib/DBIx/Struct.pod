@@ -340,6 +340,18 @@ select but for queries also.
                       { session_key => $input->{session}})
                       ->name;
 
+=head3 C<stream_rows($table, $abstract_where, $order_by, $limit, $offset, $item_func)>
+
+This function is similar to C<all_rows> but it doesn't make array of row objects.
+Instead it calls C<$item_func> code reference for every selected row in C<$_>.
+Returns number of processed rows. C<$item_func> can be any argument, 
+it is determined as the only code reference in argument list. To stop processing rows
+return any false value from this function.
+
+    my $number_of_rows =  stream_rows("table", 
+                     { date => {'>=', \"now() - interval '1 hour'"}, 
+                     sub {say $->name});
+
 =head3 C<< new_row("table", column => $value, column2 => $value2, ...) >>
 
 Inserts new row into table. Returns row object with set primary columns and passed in 
