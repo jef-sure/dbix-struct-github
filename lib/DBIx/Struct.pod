@@ -48,7 +48,7 @@ DBIx::Struct - convenience SQL functions with Class::Struct-like row objects
     
     my $row = one_row( "table_1", { id => $params->{id} } );
     
-    $row->$_($params->{$_}) for ( keys @$params );
+    $row->$_($params->{$_}) for ( keys %$params );
     
     $row->update;
     
