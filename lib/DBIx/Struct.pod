@@ -350,7 +350,7 @@ return any false value from this function.
 
     my $number_of_rows =  for_rows("table", 
                      { date => {'>=', \"now() - interval '1 hour'"}, 
-                     sub {say $->name});
+                     sub {say $_->name});
 
 =head3 C<< new_row("table", column => $value, column2 => $value2, ...) >>
 
@@ -699,8 +699,9 @@ C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
 
 =head1 Known issues
 
-This module is tested only with PostgreSQL database. If you need other database 
-support be prepared to help me to test and debug it.
+This module is tested only with PostgreSQL and MySQL databases. 
+If you need other database support be prepared to help me to test
+and debug it.
 
 =head1 See also
 

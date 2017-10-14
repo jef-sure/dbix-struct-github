@@ -190,11 +190,12 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 our @EXPORT = qw{
     one_row
     all_rows
+    for_rows
     new_row
 };
 
@@ -1989,6 +1990,7 @@ sub for_rows {
             my ($sth, $ncn) = @_;
             my $rows = 0;
             my $row;
+            local $_{mysql_use_result} = 1 if $connector_driver eq 'mysql';
             local $_;
             while ($row = $sth->fetch) {
                 ++$rows;
