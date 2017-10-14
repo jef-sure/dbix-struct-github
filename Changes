@@ -1,3 +1,7 @@
+0.30 Sat Okt 14 15:16:00 CEST 2017
+         - mysql fixes 
+         - for_rows 
+         
 0.27 Fri Aug 31 08:40:00 CEST 2017
          - mysql and test fixes 
          

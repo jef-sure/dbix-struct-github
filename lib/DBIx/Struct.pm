@@ -190,7 +190,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.29';
+our $VERSION = '0.30';
 
 our @EXPORT = qw{
     one_row
@@ -1967,7 +1967,7 @@ sub all_rows {
     );
 }
 
-sub stream_rows {
+sub for_rows {
     my $itemfunc;
     for (my $i = 0; $i < @_; ++$i) {
         if (ref($_[$i]) eq 'CODE') {
