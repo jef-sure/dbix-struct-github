@@ -187,10 +187,11 @@ use warnings;
 use SQL::Abstract;
 use Digest::MD5;
 use Data::Dumper;
+use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.31';
+our $VERSION = '0.32';
 
 our @EXPORT = qw{
     one_row
@@ -1516,6 +1517,25 @@ DESTROY
     return $ncn;
 }
 
+my %cache_complex_query;
+my $json_canonical = JSON->new->canonical->convert_blessed;
+
+sub _cached_complex_query {
+    my $key = $json_canonical->encode(\@_);
+    my ($ret, $is_one_column);
+    if (exists $cache_complex_query{$key}) {
+        ($ret, $is_one_column) = @{$cache_complex_query{$key}};
+    } else {
+        ($ret, $is_one_column) = _build_complex_query(@_);
+        $cache_complex_query{$key} = [($ret, $is_one_column)];
+    }
+    if (wantarray) {
+        return ($ret, $is_one_column);
+    } else {
+        return $ret;
+    }
+}
+
 sub _table_name()    {0}
 sub _table_alias()   {1}
 sub _table_join()    {2}
@@ -1867,7 +1887,7 @@ sub execute {
         if (not ref $table) {
             $query = "$table $where";
         } else {
-            ($query, $one_column) = _build_complex_query($table, \@query_bind, $where);
+            ($query, $one_column) = _cached_complex_query($table, \@query_bind, $where);
         }
         $ncn = make_name($query);
     }
