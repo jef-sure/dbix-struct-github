@@ -1,10 +1,13 @@
-0.32 Sat Okt 14 17:00:00 CEST 2017
+0.33 Sun Oct 15 23:00:00 CEST 2017
+         -  for_rows mysql fixes
+         
+0.32 Sat Oct 14 17:00:00 CEST 2017
          - speed complex query creation up 
          
-0.31 Sat Okt 14 17:00:00 CEST 2017
+0.31 Sat Oct 14 17:00:00 CEST 2017
          - for_rows mysql fixes 
          
-0.30 Sat Okt 14 15:16:00 CEST 2017
+0.30 Sat Oct 14 15:16:00 CEST 2017
          - mysql fixes 
          - for_rows 
          
