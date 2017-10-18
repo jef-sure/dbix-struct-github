@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.33';
+our $VERSION = '0.36';
 
 our @EXPORT = qw{
     one_row
@@ -1172,6 +1172,7 @@ sub setup_row {
                 my $i = 0;
                 while (my $chr = $cih->fetchrow_hashref) {
                     $chr->{COLUMN_NAME} =~ s/"//g;
+                    $chr->{COLUMN_NAME} = lc $chr->{COLUMN_NAME};
                     push @fields, $chr->{COLUMN_NAME};
                     if ($chr->{TYPE_NAME} =~ /^time/) {
                         push @timestamp_fields, $chr->{COLUMN_NAME};
@@ -1186,16 +1187,16 @@ sub setup_row {
                     $fields{$chr->{COLUMN_NAME}}      = $i++;
                     $field_types{$chr->{COLUMN_NAME}} = _field_type_from_name($chr->{TYPE_NAME});
                 }
-                @pkeys = $_->primary_key(undef, undef, $table);
+                @pkeys = map {lc} $_->primary_key(undef, undef, $table);
                 if (!@pkeys && @required) {
                     my $ukh = $_->statistics_info(undef, undef, $table, 1, 1);
                     my %req = map {$_ => undef} @required;
                     my %pkeys;
                     while (my $ukr = $ukh->fetchrow_hashref) {
                         if (not exists $req{$ukr->{COLUMN_NAME}} or defined $ukr->{FILTER_CONDITION}) {
-                            $pkeys{$ukr->{INDEX_NAME}}{drop} = 1;
+                            $pkeys{lc $ukr->{INDEX_NAME}}{drop} = 1;
                         } else {
-                            $pkeys{$ukr->{INDEX_NAME}}{fields}{$ukr->{COLUMN_NAME}} = undef;
+                            $pkeys{lc $ukr->{INDEX_NAME}}{fields}{lc $ukr->{COLUMN_NAME}} = undef;
                         }
                     }
                     my @d = grep {exists $pkeys{$_}{drop}} keys %pkeys;
@@ -1212,7 +1213,13 @@ sub setup_row {
                         map {
                         $_->{FK_COLUMN_NAME} = $_->{FKCOLUMN_NAME}
                             if $_->{FKCOLUMN_NAME};
-                        $_->{FK_TABLE_NAME} = $_->{FKTABLE_NAME} if $_->{FKTABLE_NAME};
+                        $_->{FK_TABLE_NAME}  = $_->{FKTABLE_NAME} if $_->{FKTABLE_NAME};
+                        $_->{FK_TABLE_NAME}  = lc $_->{FK_TABLE_NAME};
+                        $_->{FK_COLUMN_NAME} = lc $_->{FK_COLUMN_NAME};
+                        $_->{PKTABLE_NAME}  ||= $_->{UK_TABLE_NAME};
+                        $_->{PKCOLUMN_NAME} ||= $_->{UK_COLUMN_NAME};
+                        $_->{PKTABLE_NAME}  = lc $_->{PKTABLE_NAME}  if $_->{PKTABLE_NAME};
+                        $_->{PKCOLUMN_NAME} = lc $_->{PKCOLUMN_NAME} if $_->{PKCOLUMN_NAME};
                         $_
                         } @{$sth->fetchall_arrayref({})};
                 }
@@ -1222,7 +1229,11 @@ sub setup_row {
                         map {
                         $_->{FK_COLUMN_NAME} = $_->{FKCOLUMN_NAME}
                             if $_->{FKCOLUMN_NAME};
-                        $_->{FK_TABLE_NAME} = $_->{FKTABLE_NAME} if $_->{FKTABLE_NAME};
+                        $_->{FK_TABLE_NAME}  = $_->{FKTABLE_NAME} if $_->{FKTABLE_NAME};
+                        $_->{FK_TABLE_NAME}  = lc $_->{FK_TABLE_NAME};
+                        $_->{FK_COLUMN_NAME} = lc $_->{FK_COLUMN_NAME};
+                        $_->{PKTABLE_NAME}   = lc($_->{PKTABLE_NAME} || $_->{UK_TABLE_NAME});
+                        $_->{PKCOLUMN_NAME}  = lc($_->{PKCOLUMN_NAME} || $_->{UK_COLUMN_NAME});
                         $_
                         } @{$sth->fetchall_arrayref({})};
                 }
@@ -1231,7 +1242,7 @@ sub setup_row {
     } else {
 
         # means this is a query
-        my %tnh = %{$table->{NAME_hash}};
+        my %tnh = %{$table->{NAME_lc_hash}};
         for my $k (keys %tnh) {
             my $fk = $k;
             $fk =~ s/[^\w ].*$//;
@@ -1241,7 +1252,7 @@ sub setup_row {
             sub {
                 for (my $cn = 0; $cn < @{$table->{NAME}}; ++$cn) {
                     my $ti    = $_->type_info($table->{TYPE}->[$cn]);
-                    my $field = $table->{NAME}->[$cn];
+                    my $field = lc $table->{NAME}->[$cn];
                     $field =~ s/[^\w ].*$//;
                     $field_types{$field} = _field_type_from_name($ti->{TYPE_NAME});
                     push @timestamp_fields, $field
@@ -1311,12 +1322,12 @@ SK
     for my $fk (@fkeys) {
         $fk->{FK_COLUMN_NAME} =~ s/"//g;
         my $fn = $fk->{FK_COLUMN_NAME};
-        $fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
         $fn =~ tr/_/-/;
         $fn =~ s/\b(\w)/\u$1/g;
         $fn =~ tr/-//d;
         (my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
         (my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
+        $fn =~ s/^${pk}_*//i or $fn =~ s/_$pk(?=[^a-z]|$)//i or $fn =~ s/$pk(?=[^a-z]|$)//i;
         $fkfuncs{$fn} = undef;
         $foreign_tables .= <<FKT;
 		sub $fn { 
@@ -1345,8 +1356,8 @@ FKT
         (my $pk = $rk->{PKCOLUMN_NAME} || $rk->{UK_COLUMN_NAME}) =~ s/"//g;
         if ($pk ne $fk) {
             my $fn = $fk;
-            $fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
-            $fn =~ s/$ft//;
+            $fn =~ s/^${pk}_*//i or $fn =~ s/_$pk(?=[^a-z]|$)//i or $fn =~ s/$pk(?=[^a-z]|$)//i;
+            $fn =~ s/$pt//i;
             $ft .= "_$fn" if $fn;
         }
         $ft =~ tr/_/-/;
