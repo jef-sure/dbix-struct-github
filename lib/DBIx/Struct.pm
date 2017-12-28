@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.39';
+our $VERSION = '0.40';
 
 our @EXPORT = qw{
   one_row
@@ -497,7 +497,12 @@ sub populate {
             my $sth = $_->table_info('', '', '%', "TABLE");
             return if not $sth;
             my $tables = $sth->fetchall_arrayref;
-            @tables = map {$_->[2]} grep {$_->[3] eq 'TABLE' and $_->[2] !~ /^sql_/} @$tables;
+            @tables = map {
+                (my $t = $_->[2]) =~ s/"//g;
+                $t;
+              } grep {
+                $_->[3] eq 'TABLE' and $_->[2] !~ /^sql_/
+              } @$tables;
         }
     );
     setup_row($_) for @tables;
