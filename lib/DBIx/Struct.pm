@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 our @EXPORT = qw{
   one_row
@@ -1391,14 +1391,20 @@ SK
     my %foreign_tables;
     my %fkfuncs;
     for my $fk (@fkeys) {
-        $fk->{FK_COLUMN_NAME} =~ s/"//g;
-        my $fn = $fk->{FK_COLUMN_NAME};
+        (my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
+        (my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
+        my $fn = $pt;
         $fn =~ tr/_/-/;
         $fn =~ s/\b(\w)/\u$1/g;
         $fn =~ tr/-//d;
-        (my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
-        (my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
-        $fn =~ s/^${pk}_*//i or $fn =~ s/_$pk(?=[^a-z]|$)//i or $fn =~ s/$pk(?=[^a-z]|$)//i;
+        $fk->{FK_COLUMN_NAME} =~ s/"//g;
+        my $fn_suffix = $fk->{FK_COLUMN_NAME};
+        $fn_suffix =~ s/^${pk}_*//i or $fn_suffix =~ s/_$pk(?=[^a-z]|$)//i or $fn_suffix =~ s/$pk(?=[^a-z]|$)//i;
+        $fn_suffix =~ tr/_/-/;
+        $fn_suffix =~ s/\b(\w)/\u$1/g;
+        $fn_suffix =~ tr/-//d;
+        $fn_suffix =~ s/$fn//;
+        $fn .= $fn_suffix;
         $fkfuncs{$fn} = undef;
         $foreign_tables .= <<FKT;
 		sub $fn { 
