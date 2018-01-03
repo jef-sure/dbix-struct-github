@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 our @EXPORT = qw{
   one_row
@@ -995,8 +995,8 @@ sub make_object_autoload_find {
 				*{\$ncn."::".\$method} = eval \$func;
 				DBIx::Struct::error_message {
 					result  => 'SQLERR',
-					message => "Error creating method \$method for $table: \$!"
-				} if \$!;
+					message => "Error creating method \$method for $table: \$\@"
+				} if \$\@;
 			}
 			goto &{\$ncn."::".\$method};
 		}

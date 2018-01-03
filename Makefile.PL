@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME             => "DBIx::Struct",
 	AUTHOR           => "Anton Petrusevich",
-	VERSION          => "0.41",
+	VERSION          => "0.42",
 	INSTALLDIRS      => 'site',
 	LICENSE          => "artistic_2",
 	MIN_PERL_VERSION => "5.014000",
