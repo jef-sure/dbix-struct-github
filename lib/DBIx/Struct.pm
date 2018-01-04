@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.44';
+our $VERSION = '0.45';
 
 our @EXPORT = qw{
   one_row
@@ -1525,6 +1525,21 @@ ACC
         } else {
             if (!exists($pk_fields{$k}) && (not ref $table)) {
                 $accessors .= <<ACC;
+		sub _$k {
+			if(\@_ > 1) {
+				if(not CORE::ref \$_[1]) {
+					\$_[0]->[@{[_row_data]}]->[$fields{$k}] = \$_[1];
+				} else {
+					\$_[0]->[@{[_row_data]}]->[$fields{$k}] = JSON::to_json(\$_[1]);
+				}
+			}
+			if(not CORE::ref \$_[0]->[@{[_row_data]}]->[$fields{$k}]) {
+				\$_[0]->[@{[_row_updates]}] = {} if not \$_[0]->[@{[_row_updates]}];
+				\$_[0]->[@{[_row_data]}]->[$fields{$k}] = 
+					DBIx::Struct::JSON->factory(\\\$_[0]->[@{[_row_data]}]->[$fields{$k}], \$_[0]->[@{[_row_updates]}], "$k");
+			}
+			\$_[0]->[@{[_row_data]}]->[$fields{$k}]->accessor;
+		}
 		sub $k {
 			if(\@_ > 1) {
 				if(not CORE::ref \$_[1]) {
