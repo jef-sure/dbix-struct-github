@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.43';
+our $VERSION = '0.44';
 
 our @EXPORT = qw{
   one_row
@@ -512,8 +512,11 @@ sub populate {
             eval "use ${user_schema_namespace}::${uncn}";
             no strict 'refs';
             eval {
-                if (   not ${"${user_schema_namespace}::${uncn}::"}{ISA}
-                    or not "${user_schema_namespace}::${uncn}"->isa($ncn))
+                if (
+                    keys %{"${user_schema_namespace}::${uncn}::"}
+                    and (  not ${"${user_schema_namespace}::${uncn}::"}{ISA}
+                        or not "${user_schema_namespace}::${uncn}"->isa($ncn))
+                  )
                 {
                     unshift @{"${user_schema_namespace}::${uncn}::ISA"}, $ncn;
                 }
