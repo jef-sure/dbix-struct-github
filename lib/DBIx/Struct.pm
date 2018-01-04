@@ -191,7 +191,7 @@ use Scalar::Util 'refaddr';
 use base 'Exporter';
 use v5.14;
 
-our $VERSION = '0.42';
+our $VERSION = '0.43';
 
 our @EXPORT = qw{
   one_row
@@ -505,7 +505,21 @@ sub populate {
               } @$tables;
         }
     );
-    setup_row($_) for @tables;
+    for (@tables) {
+        my $ncn = setup_row($_);
+        if ($user_schema_namespace) {
+            (my $uncn = $ncn) =~ s/^.*:://;
+            eval "use ${user_schema_namespace}::${uncn}";
+            no strict 'refs';
+            eval {
+                if (   not ${"${user_schema_namespace}::${uncn}::"}{ISA}
+                    or not "${user_schema_namespace}::${uncn}"->isa($ncn))
+                {
+                    unshift @{"${user_schema_namespace}::${uncn}::ISA"}, $ncn;
+                }
+            };
+        }
+    }
 }
 
 #<<<
@@ -1484,6 +1498,12 @@ ACC
         if (!exists $json_fields{$k}) {
             if (!exists($pk_fields{$k}) && (not ref $table)) {
                 $accessors .= <<ACC;
+		sub _$k {
+			if(\@_ > 1) {
+				\$_[0]->[@{[_row_data]}]->[$fields{$k}] = \$_[1];
+			}
+			\$_[0]->[@{[_row_data]}]->[$fields{$k}];
+		}
 		sub $k {
 			if(\@_ > 1) {
 				\$_[0]->[@{[_row_data]}]->[$fields{$k}] = \$_[1];
